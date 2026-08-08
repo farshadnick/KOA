@@ -269,6 +269,11 @@ def start_push(
         raise HTTPException(status_code=409, detail="Job already running")
     req = body or PushRequest()
     registry_host, registry_project, username, password = _push_fields(req)
+    if registry_host and not username:
+        raise HTTPException(
+            status_code=400,
+            detail="Username is required when pushing to an external registry",
+        )
     if registry_host:
         proj = registry_project or settings.registry_project
         target = (
@@ -919,7 +924,8 @@ INDEX_HTML = """<!DOCTYPE html>
       if (!body.registry_host && !confirm('No registry address set. Push all images to the local registry?')) {
         return;
       }
-      if (body.registry_host && !body.username && !confirm('No username set. Push without credentials?')) {
+      if (body.registry_host && !body.username) {
+        alert('Username is required when pushing to an external registry');
         return;
       }
       const r = await fetch('/api/push', {

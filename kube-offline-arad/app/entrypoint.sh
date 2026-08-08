@@ -16,6 +16,10 @@ insecure = true
 [[registry]]
 location = "${REGISTRY_PUBLIC_HOST:-localhost:35000}"
 insecure = true
+
+[[registry]]
+location = "hub.aradarpanet.ir"
+insecure = true
 EOF
 
 exec uvicorn server:app --host 0.0.0.0 --port 8000 --log-level info

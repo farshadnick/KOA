@@ -58,6 +58,7 @@ services:
       NO_PROXY: localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx,hub.aradarpanet.ir
       REGISTRY_URL: http://registry:5000
       REGISTRY_PUBLIC_HOST: ${REGISTRY_PUBLIC_HOST:-localhost:35000}
+      REGISTRY_PROJECT: ${REGISTRY_PROJECT:-local}
       HTTP_PUBLIC_URL: ${HTTP_PUBLIC_URL:-http://localhost:8080}
       DATA_DIR: /data
       OUTPUTS_DIR: /data/outputs
@@ -66,6 +67,7 @@ services:
       IMAGE_ARCH: ${IMAGE_ARCH:-amd64}
       UBUNTU_VERSION: ${UBUNTU_VERSION:-22.04}
     volumes:
+      - ./app:/app
       - ./data:/data
       - ./config:/config
       - ./scripts/target:/opt/target-scripts:ro
