@@ -1,0 +1,4 @@
+# Extra Helm charts to download into outputs/charts
+# Formats:
+#   oci://ghcr.io/example/chart:1.2.3
+#   https://charts.bitnami.com/bitnami|nginx|15.0.0

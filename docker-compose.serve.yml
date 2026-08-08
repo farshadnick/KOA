@@ -1,0 +1,7 @@
+# Serve-only stack for air-gapped hosts (no V2Ray / no download worker).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.serve.yml up -d registry nginx
+services:
+  v2ray:
+    profiles: ["download"]
+  app:
+    profiles: ["download"]
