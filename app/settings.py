@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     http_proxy: str = "http://v2ray:10809"
     https_proxy: str = "http://v2ray:10809"
     all_proxy: str = "socks5://v2ray:10808"
-    no_proxy: str = "localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx"
+    no_proxy: str = (
+        "localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx,"
+        "hub.aradarpanet.ir"
+    )
     v2ray_container: str = "koa-v2ray"
     proxy_test_url: str = "https://www.gstatic.com/generate_204"
     proxy_ready_attempts: int = 12

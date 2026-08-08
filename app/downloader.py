@@ -31,6 +31,18 @@ def _format_bytes(size: int) -> str:
     return f"{size} B"
 
 
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+
+
 def _proxy_env() -> dict[str, str]:
     env = os.environ.copy()
     env["HTTP_PROXY"] = settings.http_proxy
@@ -41,6 +53,14 @@ def _proxy_env() -> dict[str, str]:
     env["all_proxy"] = settings.all_proxy
     env["NO_PROXY"] = settings.no_proxy
     env["no_proxy"] = settings.no_proxy
+    return env
+
+
+def _direct_env() -> dict[str, str]:
+    """Copy process env with proxy vars removed (direct / LAN access)."""
+    env = os.environ.copy()
+    for key in _PROXY_ENV_KEYS:
+        env.pop(key, None)
     return env
 
 
@@ -74,7 +94,9 @@ def run_cmd(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     started = time.monotonic()
-    env = _proxy_env() if use_proxy else os.environ.copy()
+    # Compose injects HTTP(S)_PROXY into the app container. use_proxy=False must
+    # strip those vars; otherwise skopeo still tunnels LAN registry pushes via V2Ray.
+    env = _proxy_env() if use_proxy else _direct_env()
     if extra_env:
         env.update(extra_env)
     job.log("$ " + _redact_cmd(args))

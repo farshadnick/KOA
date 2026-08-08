@@ -55,7 +55,7 @@ services:
       HTTP_PROXY: http://v2ray:10809
       HTTPS_PROXY: http://v2ray:10809
       ALL_PROXY: socks5://v2ray:10808
-      NO_PROXY: localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx
+      NO_PROXY: localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx,hub.aradarpanet.ir
       REGISTRY_URL: http://registry:5000
       REGISTRY_PUBLIC_HOST: ${REGISTRY_PUBLIC_HOST:-localhost:35000}
       HTTP_PUBLIC_URL: ${HTTP_PUBLIC_URL:-http://localhost:8080}
