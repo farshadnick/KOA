@@ -1,0 +1,11 @@
+data/cache/
+data/outputs/
+data/logs/
+config/v2ray.json
+config/google-service-account.json
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+.DS_Store

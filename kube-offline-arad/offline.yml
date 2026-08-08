@@ -1,0 +1,41 @@
+#
+# Copy to your Kubespray inventory: inventory/<cluster>/group_vars/all/offline.yml
+# Replace YOUR_HOST with the machine that runs this compose stack (registry + nginx).
+#
+
+# Nginx serves files/charts/packages; Docker Registry v2 serves images.
+http_server: "http://YOUR_HOST:8080"
+registry_host: "YOUR_HOST:35000"
+
+containerd_registries_mirrors:
+  - prefix: "{{ registry_host }}"
+    mirrors:
+      - host: "http://{{ registry_host }}"
+        capabilities: ["pull", "resolve"]
+        skip_verify: true
+
+files_repo: "{{ http_server }}/files"
+yum_repo: "{{ http_server }}/rpms"
+ubuntu_repo: "{{ http_server }}/debs"
+
+kube_image_repo: "{{ registry_host }}"
+gcr_image_repo: "{{ registry_host }}"
+docker_image_repo: "{{ registry_host }}"
+quay_image_repo: "{{ registry_host }}"
+github_image_repo: "{{ registry_host }}"
+
+local_path_provisioner_helper_image_repo: "{{ registry_host }}/busybox"
+
+kubeadm_download_url: "{{ files_repo }}/kubernetes/v{{ kube_version }}/kubeadm"
+kubectl_download_url: "{{ files_repo }}/kubernetes/v{{ kube_version }}/kubectl"
+kubelet_download_url: "{{ files_repo }}/kubernetes/v{{ kube_version }}/kubelet"
+etcd_download_url: "{{ files_repo }}/kubernetes/etcd/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+cni_download_url: "{{ files_repo }}/kubernetes/cni/cni-plugins-linux-{{ image_arch }}-v{{ cni_version }}.tgz"
+crictl_download_url: "{{ files_repo }}/kubernetes/cri-tools/crictl-v{{ crictl_version }}-{{ ansible_system | lower }}-{{ image_arch }}.tar.gz"
+calicoctl_download_url: "{{ files_repo }}/kubernetes/calico/v{{ calico_ctl_version }}/calicoctl-linux-{{ image_arch }}"
+calico_crds_download_url: "{{ files_repo }}/kubernetes/calico/crds.yaml"
+ciliumcli_download_url: "{{ files_repo }}/cilium-cli/v{{ cilium_cli_version }}/cilium-linux-{{ image_arch }}.tar.gz"
+helm_download_url: "{{ files_repo }}/helm-v{{ helm_version }}-linux-{{ image_arch }}.tar.gz"
+runc_download_url: "{{ files_repo }}/runc/v{{ runc_version }}/runc.{{ image_arch }}"
+nerdctl_download_url: "{{ files_repo }}/nerdctl-{{ nerdctl_version }}-{{ ansible_system | lower }}-{{ image_arch }}.tar.gz"
+containerd_download_url: "{{ files_repo }}/containerd-{{ containerd_version }}-linux-{{ image_arch }}.tar.gz"

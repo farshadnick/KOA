@@ -1,0 +1,113 @@
+services:
+  v2ray:
+    # Xray is V2Ray-config compatible and supports Shadowsocks 2022 ciphers.
+    image: ghcr.io/xtls/xray-core@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7
+    container_name: koa-v2ray
+    restart: unless-stopped
+    command: ["run", "-config", "/etc/xray/config.json"]
+    volumes:
+      - ./config/v2ray.json:/etc/xray/config.json:ro
+    ports:
+      - "10808:10808"
+      - "10809:10809"
+    networks:
+      - offline
+
+  registry:
+    image: registry:2.8.3
+    container_name: koa-registry
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+    ports:
+      - "${REGISTRY_PORT:-35000}:5000"
+    networks:
+      - offline
+
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: koa-nginx
+    restart: unless-stopped
+    volumes:
+      - ./data/outputs:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    networks:
+      - offline
+
+  app:
+    build:
+      context: ./app
+    container_name: koa-app
+    restart: unless-stopped
+    depends_on:
+      - v2ray
+      - registry
+      - nginx
+    env_file:
+      - ./config/app.env
+    environment:
+      HTTP_PROXY: http://v2ray:10809
+      HTTPS_PROXY: http://v2ray:10809
+      ALL_PROXY: socks5://v2ray:10808
+      NO_PROXY: localhost,127.0.0.1,registry,nginx,koa-registry,koa-nginx,hub.aradarpanet.ir
+      REGISTRY_URL: http://registry:5000
+      REGISTRY_PUBLIC_HOST: ${REGISTRY_PUBLIC_HOST:-localhost:35000}
+      HTTP_PUBLIC_URL: ${HTTP_PUBLIC_URL:-http://localhost:8080}
+      DATA_DIR: /data
+      OUTPUTS_DIR: /data/outputs
+      CACHE_DIR: /data/cache
+      KUBESPRAY_VERSION: ${KUBESPRAY_VERSION:-2.27.0}
+      IMAGE_ARCH: ${IMAGE_ARCH:-amd64}
+      UBUNTU_VERSION: ${UBUNTU_VERSION:-22.04}
+    volumes:
+      - ./data:/data
+      - ./config:/config
+      - ./scripts/target:/opt/target-scripts:ro
+      - ./scripts/os-repo:/opt/os-repo:ro
+      - ./offline.yml:/opt/offline.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    networks:
+      - offline
+
+  mattermost-bot:
+    profiles: ["mattermost"]
+    build:
+      context: ./mattermost-bot
+    container_name: koa-mattermost-bot
+    restart: unless-stopped
+    environment:
+      MATTERMOST_URL: ${MATTERMOST_URL:-}
+      MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      GOOGLE_SHEET_TAB: ${GOOGLE_SHEET_TAB:-Support Hours}
+      GOOGLE_CREDENTIALS_FILE: /run/secrets/google-service-account
+      SHEET_REFRESH_SECONDS: ${SHEET_REFRESH_SECONDS:-300}
+      RULE_CACHE_PATH: /data/mattermost-bot/rules.json
+      LOG_LEVEL: ${MATTERMOST_BOT_LOG_LEVEL:-INFO}
+    volumes:
+      - mattermost-bot-cache:/data/mattermost-bot
+    secrets:
+      - google-service-account
+    networks:
+      - offline
+
+networks:
+  offline:
+    name: koa-offline
+    driver: bridge
+
+volumes:
+  registry-data:
+  mattermost-bot-cache:
+
+secrets:
+  google-service-account:
+    file: ./config/google-service-account.json
