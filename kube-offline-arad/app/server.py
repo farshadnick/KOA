@@ -15,6 +15,7 @@ from downloader import (
     get_download_preview,
     prepare_download_list,
     push_saved_images,
+    registry_login,
     run_full_download,
     write_generated_offline_yml,
 )
@@ -224,13 +225,7 @@ def download_preview() -> dict:
     return get_download_preview()
 
 
-@app.post("/api/push")
-def start_push(
-    body: Annotated[PushRequest | None, Body()] = None,
-) -> dict:
-    if job.status == JobStatus.running:
-        raise HTTPException(status_code=409, detail="Job already running")
-    req = body or PushRequest()
+def _push_fields(req: PushRequest) -> tuple[str | None, str | None, str | None, str | None]:
     registry_host = (req.registry_host or "").strip() or None
     registry_project = (
         req.registry_project.strip()
@@ -239,6 +234,41 @@ def start_push(
     )
     username = (req.username or "").strip() or None
     password = req.password if username else None
+    return registry_host, registry_project, username, password
+
+
+@app.post("/api/registry/login")
+def api_registry_login(
+    body: Annotated[PushRequest | None, Body()] = None,
+) -> dict:
+    """Test skopeo login against the given registry (does not start a push job)."""
+    if job.status == JobStatus.running:
+        raise HTTPException(status_code=409, detail="Job already running")
+    req = body or PushRequest()
+    registry_host, _, username, password = _push_fields(req)
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    try:
+        server = registry_login(
+            registry_host,
+            username=username,
+            password=password or "",
+            tls_verify=req.tls_verify,
+            quiet=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return {"ok": True, "message": f"Logged in to {server}", "server": server}
+
+
+@app.post("/api/push")
+def start_push(
+    body: Annotated[PushRequest | None, Body()] = None,
+) -> dict:
+    if job.status == JobStatus.running:
+        raise HTTPException(status_code=409, detail="Job already running")
+    req = body or PushRequest()
+    registry_host, registry_project, username, password = _push_fields(req)
     if registry_host:
         proj = registry_project or settings.registry_project
         target = (
@@ -552,12 +582,13 @@ INDEX_HTML = """<!DOCTYPE html>
           <label><input id="pushTls" type="checkbox" /> Verify TLS certificate</label>
         </div>
         <div class="row">
+          <button class="secondary" id="btnLogin" onclick="registryLogin()">Login to registry</button>
           <button id="btnPush" onclick="startPush()">Push all images</button>
         </div>
-        <p class="hint">
-          Uploads every image from the saved <code>images.list</code> / tarballs.
-          External registries get <code>&lt;host&gt;/&lt;project&gt;/…</code>
-          (default project <code>local</code>). Leave the address empty for the local Compose registry.
+        <p class="hint" id="loginHint">
+          Uses <code>skopeo login</code> before push. External registries get
+          <code>&lt;host&gt;/&lt;project&gt;/…</code> (default project <code>local</code>).
+          Leave the address empty for the local Compose registry.
         </p>
       </section>
       <section style="margin-top:1rem">
@@ -843,27 +874,58 @@ INDEX_HTML = """<!DOCTYPE html>
       refreshStatus();
     }
 
-    async function startPush() {
-      const registry = document.getElementById('pushRegistry').value.trim();
-      const project = document.getElementById('pushProject').value.trim();
-      const username = document.getElementById('pushUser').value.trim();
-      const password = document.getElementById('pushPass').value;
-      if (!registry && !confirm('No registry address set. Push all images to the local registry?')) {
+    function pushFormBody() {
+      return {
+        registry_host: document.getElementById('pushRegistry').value.trim() || null,
+        registry_project: document.getElementById('pushProject').value.trim() || null,
+        username: document.getElementById('pushUser').value.trim() || null,
+        password: document.getElementById('pushPass').value || null,
+        tls_verify: document.getElementById('pushTls').checked,
+      };
+    }
+
+    async function registryLogin() {
+      const body = pushFormBody();
+      const hint = document.getElementById('loginHint');
+      if (!body.username) {
+        alert('Username is required to login');
         return;
       }
-      if (registry && !username && !confirm('No username set. Push without credentials?')) {
+      if (!body.registry_host && !confirm('No registry address set. Login to local registry:5000?')) {
+        return;
+      }
+      const btn = document.getElementById('btnLogin');
+      btn.disabled = true;
+      try {
+        const r = await fetch('/api/registry/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (!r.ok) {
+          hint.textContent = 'Login failed: ' + (j.detail || 'unknown error');
+          alert(j.detail || 'Login failed');
+          return;
+        }
+        hint.textContent = j.message || 'Login ok';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function startPush() {
+      const body = pushFormBody();
+      if (!body.registry_host && !confirm('No registry address set. Push all images to the local registry?')) {
+        return;
+      }
+      if (body.registry_host && !body.username && !confirm('No username set. Push without credentials?')) {
         return;
       }
       const r = await fetch('/api/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          registry_host: registry || null,
-          registry_project: project || null,
-          username: username || null,
-          password: password || null,
-          tls_verify: document.getElementById('pushTls').checked,
-        }),
+        body: JSON.stringify(body),
       });
       const j = await r.json();
       if (!r.ok) { alert(j.detail || 'Failed'); return; }

@@ -73,11 +73,22 @@ def _redact_cmd(args: list[str]) -> str:
             redacted.append("***")
             hide_next = False
             continue
-        if arg in ("--dest-creds", "--src-creds"):
+        if arg in (
+            "--dest-creds",
+            "--src-creds",
+            "--password",
+            "-p",
+            "--username",
+            "-u",
+        ):
             redacted.append(arg)
             hide_next = True
             continue
         if arg.startswith("--dest-creds=") or arg.startswith("--src-creds="):
+            key = arg.split("=", 1)[0]
+            redacted.append(f"{key}=***")
+            continue
+        if arg.startswith("--password=") or arg.startswith("--username="):
             key = arg.split("=", 1)[0]
             redacted.append(f"{key}=***")
             continue
@@ -92,6 +103,7 @@ def run_cmd(
     check: bool = True,
     use_proxy: bool = True,
     extra_env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     started = time.monotonic()
     # Compose injects HTTP(S)_PROXY into the app container. use_proxy=False must
@@ -106,6 +118,7 @@ def run_cmd(
         env=env,
         text=True,
         capture_output=True,
+        input=input_text,
     )
     if proc.stdout:
         for line in proc.stdout.splitlines()[-30:]:
@@ -626,6 +639,52 @@ def _normalize_registry_project(project: str | None) -> str:
     if project is None:
         return ""
     return project.strip().strip("/")
+
+
+def _registry_server(host: str | None) -> str:
+    """Hostname[:port] for skopeo login (strip Harbor project path)."""
+    return _normalize_registry_host(host).split("/", 1)[0]
+
+
+def registry_login(
+    registry_host: str | None,
+    *,
+    username: str,
+    password: str,
+    tls_verify: bool = False,
+    quiet: bool = False,
+) -> str:
+    """Authenticate to a registry with skopeo login (stores creds for later copy)."""
+    server = _registry_server(registry_host)
+    user = username.strip()
+    if not user:
+        raise RuntimeError("Registry username is required for login")
+    args = [
+        "skopeo",
+        "login",
+        f"--tls-verify={'true' if tls_verify else 'false'}",
+        "--username",
+        user,
+        "--password-stdin",
+        server,
+    ]
+    if quiet:
+        # UI test login — avoid writing into the job log stream.
+        proc = subprocess.run(
+            args,
+            env=_direct_env(),
+            text=True,
+            capture_output=True,
+            input=password or "",
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "login failed").strip()
+            raise RuntimeError(detail.splitlines()[-1] if detail else "login failed")
+        return server
+    job.log(f"REGISTRY login: {server} as {user}")
+    run_cmd(args, use_proxy=False, input_text=password or "")
+    job.log(f"REGISTRY login ok: {server}")
+    return server
 
 
 def _registry_dest(
@@ -1175,6 +1234,20 @@ def push_saved_images(
     )
     settings.push_images = True
     settings.push_to_registry = True
+    if username:
+        job.set_phase("login", f"Logging in to {_registry_server(registry_host)}")
+        registry_login(
+            registry_host,
+            username=username,
+            password=password or "",
+            tls_verify=tls_verify,
+        )
+        job.set_phase(
+            "push",
+            f"Pushing {len(refs)} saved image tars to {target}",
+        )
+    elif registry_host:
+        job.log("REGISTRY login: skipped (no username)")
     count = 0
     for index, line in enumerate(refs, start=1):
         ref = _normalize_image(line)
